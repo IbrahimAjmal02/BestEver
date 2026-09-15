@@ -1,0 +1,56 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  votes Vote[]
+}
+
+model Category {
+  id   String @id @default(uuid())
+  name String @unique
+  slug String @unique
+
+  items Item[]
+  votes Vote[]
+}
+
+model Item {
+  id         String  @id @default(uuid())
+  name       String
+  externalId String? // null for custom (user-added) entries; set for items pulled from an external API
+  voteCount  Int     @default(0)
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  votes Vote[]
+
+  @@unique([categoryId, externalId])
+}
+
+model Vote {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  itemId String
+  item   Item   @relation(fields: [itemId], references: [id])
+
+  @@unique([userId, categoryId])
+}
