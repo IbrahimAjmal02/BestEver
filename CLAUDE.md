@@ -158,12 +158,45 @@ repo state, don't assume this file is fully current.** Roughly:
 - [x] `GET /categories` and `GET /categories/:slug/leaderboard` routes
       (`server/src/routes/categories.ts`) — read-only, working end to end
       with the frontend
-- [ ] Auth (signup/login) — approach decided (Firebase Authentication, see
-      server/ section above), not yet implemented. Needs: `User.passwordHash`
-      → `User.firebaseUid` schema migration, Firebase project setup, client
-      SDK integration, server-side `requireAuth` middleware
-- [ ] Voting API routes
-- [ ] Frontend pages (homepage, category/voting page, leaderboard UI)
+- [x] Firebase project set up (Email/Password + Google providers enabled),
+      `User.passwordHash` → `User.firebaseUid` schema migration done
+- [x] Client Firebase SDK wired up (`client/src/lib/firebase.ts`)
+- [x] Server Firebase Admin SDK + `requireAuth` middleware
+      (`server/src/lib/firebaseAdmin.ts`, `server/src/middleware/requireAuth.ts`)
+      — verifies a Firebase ID token, attaches `req.firebaseUid`
+- [x] Signup UI (`client/src/components/SignupForm.tsx`) in a modal
+      (`client/src/components/Modal.tsx`), triggered from a "Sign up / Sign
+      in" button — calls Firebase directly, not yet tested end-to-end with a
+      real account
+- [ ] Sign-in flow — only signup exists so far, no login form for returning
+      users yet
+- [ ] Backend "sync" route — nothing yet creates the `User` row in Postgres
+      after a Firebase signup; `SignupForm` currently only logs the ID token
+      to the console instead of sending it anywhere
+- [ ] External item search integration — per-category provider modules
+      (TMDB, RAWG, Jikan, MusicBrainz, Nominatim, see table above) behind a
+      `GET /categories/:slug/search?q=` route; each provider must fail soft
+      (return `[]`, never throw) per the "flaky API shouldn't break voting"
+      rule
+- [ ] Item creation — `POST /categories/:slug/items`, find-or-create against
+      the `[categoryId, externalId]` unique constraint (handles both a
+      selected external search result and a custom typed entry)
+- [ ] Voting API routes — `POST /vote` (cast), `PUT /vote` (change an
+      existing vote — one per category, re-voting moves it rather than
+      failing), `DELETE /vote/:categoryId` (remove), `GET
+      /categories/:slug/my-vote` (so the UI can show "you voted for X").
+      Casting/changing a vote must be a Prisma **transaction** that also
+      increments/decrements the target `Item.voteCount` — see the
+      denormalized-counter note above, don't drop this into a plain COUNT
+- [ ] Profile page — a page showing the logged-in user's own votes across
+      every category. Needs a new backend route (not yet planned in detail)
+      to fetch a user's votes joined with their item/category info, e.g.
+      `GET /me/votes`, protected by `requireAuth`
+- [ ] Frontend: category/voting page (search UI + custom-entry fallback +
+      cast-vote UI, per category)
+- [ ] Frontend: leaderboard UI page (consumes the existing
+      `GET /categories/:slug/leaderboard` route)
+- [ ] Frontend: profile page (consumes the new `GET /me/votes` route above)
 - [ ] Docker (both services)
 - [ ] Kubernetes manifests
 - [ ] Deployment
