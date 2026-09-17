@@ -53,13 +53,16 @@ function App() {
         </div>
 
         {user ? (
-          <button
-            type="button"
-            onClick={handleSignOut}
-            className="rounded-md bg-gray-900 px-4 py-2 font-medium text-white hover:bg-gray-800"
-          >
-            Sign out
-          </button>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-600">{user.email}</span>
+            <button
+              type="button"
+              onClick={handleSignOut}
+              className="rounded-md bg-gray-900 px-4 py-2 font-medium text-white hover:bg-gray-800"
+            >
+              Sign out
+            </button>
+          </div>
         ) : (
           <div className="flex gap-2">
             <button

@@ -1,1 +1,8 @@
 @import "tailwindcss";
+
+/* Tailwind's Preflight reset sets button { cursor: default }, overriding the
+   browser's normal pointer-on-hover — restore it for anything clickable. */
+button:not(:disabled),
+[role="button"] {
+  cursor: pointer;
+}

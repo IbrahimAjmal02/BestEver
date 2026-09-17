@@ -164,15 +164,25 @@ repo state, don't assume this file is fully current.** Roughly:
 - [x] Server Firebase Admin SDK + `requireAuth` middleware
       (`server/src/lib/firebaseAdmin.ts`, `server/src/middleware/requireAuth.ts`)
       — verifies a Firebase ID token, attaches `req.firebaseUid`
-- [x] Signup UI (`client/src/components/SignupForm.tsx`) in a modal
-      (`client/src/components/Modal.tsx`), triggered from a "Sign up / Sign
-      in" button — calls Firebase directly, not yet tested end-to-end with a
-      real account
-- [ ] Sign-in flow — only signup exists so far, no login form for returning
-      users yet
-- [ ] Backend "sync" route — nothing yet creates the `User` row in Postgres
-      after a Firebase signup; `SignupForm` currently only logs the ID token
-      to the console instead of sending it anywhere
+- [x] Signup UI (`client/src/components/SignupForm.tsx`) and sign-in UI
+      (`client/src/components/SignInForm.tsx`), both in the shared `Modal`,
+      toggled via separate "Sign in"/"Sign up" buttons (two side-by-side
+      when signed out) or a single "Sign out" button (+ email shown) when
+      signed in — driven by an `onAuthStateChanged` listener in `App.tsx`.
+      **Verified live end-to-end** with a real throwaway account: signup →
+      Firebase account created → UI correctly flips to signed-in state
+- [x] Email verification (partial — frontend only): `sendEmailVerification`
+      fires on signup; `App.tsx` shows a "please verify" banner with
+      resend/refresh actions when `user.emailVerified` is false. **Backend
+      enforcement not done** — nothing server-side blocks unverified users
+      from protected actions yet; deferred until the vote route exists
+- [x] Backend sync route written — `POST /users/sync`
+      (`server/src/routes/users.ts`), protected by `requireAuth`, upserts a
+      `User` row keyed on `firebaseUid`. `requireAuth` extended to also
+      attach `req.firebaseEmail`. Mounted in `index.ts`.
+      **Not yet connected to anything** — `SignupForm`/`SignInForm` still
+      only `console.log` the ID token instead of POSTing it here, so no
+      real `User` row has ever actually been created in Postgres yet
 - [ ] External item search integration — per-category provider modules
       (TMDB, RAWG, Jikan, MusicBrainz, Nominatim, see table above) behind a
       `GET /categories/:slug/search?q=` route; each provider must fail soft
