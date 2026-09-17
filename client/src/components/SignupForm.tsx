@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { createUserWithEmailAndPassword } from 'firebase/auth'
+import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth'
 import { auth } from '../lib/firebase'
 
 interface SignupFormProps {
@@ -28,6 +28,7 @@ export default function SignupForm({ onClose }: SignupFormProps) {
             const idToken = await userCredential.user.getIdToken()
             console.log('Signed up:', userCredential.user.uid)
             console.log('ID token:', idToken)
+            await sendEmailVerification(userCredential.user)
             onClose?.()
         } catch (err) {
             console.error('Signup failed:', err)
