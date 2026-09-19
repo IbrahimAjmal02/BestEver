@@ -9,8 +9,11 @@ typed in as a custom entry if it's not found. Each category has a live
 leaderboard showing the top 25–50 most-voted items. The whole thing is free
 to use.
 
-Planned categories at launch: **movies, video games, anime, music, places,
-actors** — more may be added later.
+Planned categories at launch: **movies, video games, anime, music,
+actors** — more may be added later. (**Places** was in the original plan but
+is deferred for now — no Nominatim integration yet; commented out in
+`prisma/seed.ts` and removed from the seeded database, not deleted from this
+plan permanently.)
 
 ## Who's building this and why
 
@@ -136,7 +139,8 @@ entry instead. Planned mapping:
 | Video games  | RAWG                            | Yes |
 | Anime        | Jikan (MyAnimeList, unofficial) | No |
 | Music        | MusicBrainz                     | No (needs User-Agent header) |
-| Places       | OpenStreetMap Nominatim         | No (needs User-Agent header, rate-limited) |
+<!-- | Places       | OpenStreetMap Nominatim         | No (needs User-Agent header, rate-limited) | -->
+<!-- Places deferred for now, see "Planned categories at launch" above -->
 
 A flaky external API should never break voting — always fail soft to
 "no external results, custom entry still works."
@@ -153,8 +157,8 @@ repo state, don't assume this file is fully current.** Roughly:
 - [x] `client/` scaffolded: Vite + React + TypeScript + Tailwind, boilerplate
       cleared
 - [x] Prisma installed and schema pushed to AWS RDS Postgres; `User`,
-      `Category`, `Item`, `Vote` models migrated; six launch categories
-      seeded via `prisma/seed.ts`
+      `Category`, `Item`, `Vote` models migrated; five launch categories
+      seeded via `prisma/seed.ts` (Places deferred, see above)
 - [x] `GET /categories` and `GET /categories/:slug/leaderboard` routes
       (`server/src/routes/categories.ts`) — read-only, working end to end
       with the frontend

@@ -5,7 +5,7 @@ const categories = [
   { name: 'Video Games', slug: 'video-games' },
   { name: 'Anime', slug: 'anime' },
   { name: 'Music', slug: 'music' },
-  { name: 'Places', slug: 'places' },
+  // { name: 'Places', slug: 'places' }, // deferred for now — no Nominatim integration yet
   { name: 'Actors', slug: 'actors' },
 ]
 
