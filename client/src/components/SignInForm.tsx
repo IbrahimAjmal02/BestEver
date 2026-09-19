@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { signInWithEmailAndPassword } from 'firebase/auth'
 import { auth } from '../lib/firebase'
+import { syncUser } from '../api/users';
 
 interface SignInFormProps {
     onClose?: () => void
@@ -27,7 +28,7 @@ export default function SignInForm({ onClose }: SignInFormProps) {
             const userCredential = await signInWithEmailAndPassword(auth, email, password)
             const idToken = await userCredential.user.getIdToken()
             console.log('Signed in:', userCredential.user.uid)
-            console.log('ID token:', idToken)
+            await syncUser(idToken)
             onClose?.()
         } catch (err) {
             console.error('Sign in failed:', err)

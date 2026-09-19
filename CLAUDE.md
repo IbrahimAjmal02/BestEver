@@ -176,13 +176,15 @@ repo state, don't assume this file is fully current.** Roughly:
       resend/refresh actions when `user.emailVerified` is false. **Backend
       enforcement not done** — nothing server-side blocks unverified users
       from protected actions yet; deferred until the vote route exists
-- [x] Backend sync route written — `POST /users/sync`
-      (`server/src/routes/users.ts`), protected by `requireAuth`, upserts a
-      `User` row keyed on `firebaseUid`. `requireAuth` extended to also
-      attach `req.firebaseEmail`. Mounted in `index.ts`.
-      **Not yet connected to anything** — `SignupForm`/`SignInForm` still
-      only `console.log` the ID token instead of POSTing it here, so no
-      real `User` row has ever actually been created in Postgres yet
+- [x] Backend sync route — `POST /users/sync` (`server/src/routes/users.ts`),
+      protected by `requireAuth`, upserts a `User` row keyed on
+      `firebaseUid`. `requireAuth` attaches `req.firebaseEmail` too.
+      **Fully wired and verified live**: `client/src/api/users.ts`'s
+      `syncUser()` is called from both `SignupForm` and `SignInForm` right
+      after getting the ID token — confirmed end-to-end with a real test
+      signup that produced an actual `User` row in Postgres (matching
+      `firebaseUid`/`email`). The full chain (Firebase signup → sync call →
+      Postgres row) now genuinely works, not just each piece in isolation
 - [ ] External item search integration — per-category provider modules
       (TMDB, RAWG, Jikan, MusicBrainz, Nominatim, see table above) behind a
       `GET /categories/:slug/search?q=` route; each provider must fail soft

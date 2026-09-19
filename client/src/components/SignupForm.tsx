@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth'
 import { auth } from '../lib/firebase'
+import { syncUser } from '../api/users';
 
 interface SignupFormProps {
     onClose?: () => void
@@ -27,7 +28,7 @@ export default function SignupForm({ onClose }: SignupFormProps) {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password)
             const idToken = await userCredential.user.getIdToken()
             console.log('Signed up:', userCredential.user.uid)
-            console.log('ID token:', idToken)
+            await syncUser(idToken)
             await sendEmailVerification(userCredential.user)
             onClose?.()
         } catch (err) {
