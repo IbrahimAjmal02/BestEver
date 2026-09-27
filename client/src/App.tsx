@@ -5,6 +5,7 @@ import SignInForm from './components/SignInForm'
 import Modal from './components/Modal'
 import { onAuthStateChanged, sendEmailVerification, signOut, type User } from 'firebase/auth'
 import { auth } from './lib/firebase'
+import SearchBox from './components/SearchBox'
 
 function App() {
   const [categories, setCategories] = useState<Category[]>([])
@@ -121,6 +122,8 @@ function App() {
           </li>
         ))}
       </ul>
+
+      <SearchBox />
     </div>
   )
 }

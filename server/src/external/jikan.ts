@@ -1,4 +1,14 @@
+import { request } from 'undici'
 import type { ExternalSearchResult } from './types.js'
+
+// Using undici's `request()` instead of the global `fetch()` here —
+// deliberately, not a style choice. Jikan's infrastructure returns a 504
+// specifically to requests made via `fetch()` (its stricter, spec-compliant
+// wrapper), while `undici.request()` (the lower-level client `fetch()` is
+// itself built on) gets a real response. Confirmed by directly comparing
+// the two against the same URL. Likely a Cloudflare-level bot-detection
+// quirk reacting to something `fetch()` adds automatically — not something
+// we can fix on our end, so we route around it.
 
 // 1. export async function search(query: string): Promise<ExternalSearchResult[]> {
 //
@@ -12,18 +22,19 @@ export async function search(query: string): Promise<ExternalSearchResult[]> {
 //       https://api.jikan.moe/v4/anime?q=<query, encoded>
 //       Remember encodeURIComponent(query) — same URL-encoding concept
 //       from way back when we discussed the % in URLs.
-        const res = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}`)
+        const { statusCode, body } = await request(
+            `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}`,
+        )
 
-//    4. Check res.ok — if the request came back with an error status
-//       (which is EXACTLY what's happening right now, Jikan is down),
-//       return [] here too. Don't try to parse a failed response as JSON.
-        if (!res.ok) {
+//    4. Check the status code — if the request came back with an error
+//       status, return [] here too. Don't try to parse a failed response.
+        if (statusCode < 200 || statusCode >= 300) {
             return []
         }
 
-//    5. Parse the body: const json = await res.json()
+//    5. Parse the body: const json = await body.json()
 //       Jikan's real shape: { data: [ { mal_id, title, images: { jpg: { image_url } } }, ... ] }
-        const json = await res.json()
+        const json = await body.json() as any
 
 //    6. Map json.data into your normalized ExternalSearchResult shape:
 //       - externalId: String(item.mal_id)   (mal_id is a number, externalId must be a string)

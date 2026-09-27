@@ -189,11 +189,59 @@ repo state, don't assume this file is fully current.** Roughly:
       signup that produced an actual `User` row in Postgres (matching
       `firebaseUid`/`email`). The full chain (Firebase signup → sync call →
       Postgres row) now genuinely works, not just each piece in isolation
-- [ ] External item search integration — per-category provider modules
-      (TMDB, RAWG, Jikan, MusicBrainz, Nominatim, see table above) behind a
-      `GET /categories/:slug/search?q=` route; each provider must fail soft
-      (return `[]`, never throw) per the "flaky API shouldn't break voting"
-      rule
+- [x] External item search — the full pattern (`server/src/external/types.ts`
+      shared shape, per-provider modules, `server/src/external/registry.ts`
+      mapping category slug → provider, `GET /categories/:slug/search?q=`
+      dispatch route in `categories.ts`, a `client/src/api/search.ts`
+      caller, and a `SearchBox` component) is built and **verified live**
+      for **Anime (Jikan)** — the first and so far only provider.
+      **Important gotcha discovered and fixed**: Jikan's infrastructure
+      returns a `504` specifically to requests made via Node's global
+      `fetch()`, while `undici`'s lower-level `request()` (which `fetch()`
+      is itself built on) gets a real response — confirmed by directly
+      comparing both against the same URL. Likely Cloudflare-level bot
+      detection reacting to something `fetch()` adds automatically.
+      `jikan.ts` now uses `undici.request()` instead of `fetch()`; **any
+      future provider module that behaves strangely with plain `fetch()`
+      should try this same swap before assuming the API itself is broken**.
+- [x] TMDB Movies provider (`server/src/external/tmdb.ts`, `searchMovies`)
+      — registered in `registry.ts` under `movies`, **verified live**
+      end-to-end through the real `GET /categories/movies/search?q=` route.
+      Uses `undici.request()` from the start (per the Jikan lesson above).
+      Note: TMDB's response uses `results` (not `data` like Jikan), and
+      `poster_path` is a relative path needing
+      `https://image.tmdb.org/t/p/w500` prepended — Jikan's image URLs were
+      already complete
+- [x] TMDB Actors provider (`server/src/external/tmdb.ts`, `searchPeople`)
+      — registered under `actors`, **verified live** through the real route.
+      Uses `/search/person`, field `name` (not `title`), image field
+      `profile_path` (not `poster_path`) — otherwise identical pattern to
+      `searchMovies`
+- [x] RAWG (Video games) provider (`server/src/external/rawg.ts`) —
+      registered under `video-games`, **verified live** through the real
+      route. Key sent as a query param (`?key=`), not a header — RAWG's own
+      requirement, no choice in the matter unlike TMDB's header option.
+      `background_image` is already a full URL or `null` (like Jikan, not
+      like TMDB's relative paths needing a prefix)
+
+**All five external search providers are now done and verified live**
+(Anime/Jikan, Movies+Actors/TMDB, Music/MusicBrainz, Video games/RAWG) —
+the entire "External item search integration" line item from earlier in
+this file is complete at the API level. What's NOT done: the frontend
+(`SearchBox`) still only exposes Anime to an actual user — see below.
+- [x] MusicBrainz (Music) provider (`server/src/external/musicbrainz.ts`)
+      — registered under `music`, **verified live** through the real route.
+      **Design decision**: searches MusicBrainz's `artist` entity (singers/
+      bands), not `recording` (individual songs) — "Best Music Ever" votes
+      on artists, matching how Actors is a separate category from Movies
+      rather than folding performers into the same vote. `User-Agent:
+      BestEver/1.0 (ibrahimajmal02@gmail.com)` sent per their usage policy.
+      No `imageUrl` — MusicBrainz's core API doesn't include artist photos;
+      would need a separate lookup (not done)
+- [ ] Frontend: `SearchBox` is currently hardcoded to the `'anime'` category
+      and rendered directly on the homepage (`App.tsx`) — temporary,
+      pending real routing (none exists yet) and the category/voting page
+      below, at which point it should take the category as a prop instead
 - [ ] Item creation — `POST /categories/:slug/items`, find-or-create against
       the `[categoryId, externalId]` unique constraint (handles both a
       selected external search result and a custom typed entry)
