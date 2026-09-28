@@ -9,7 +9,11 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   })
 
   if (!res.ok) {
-    throw new Error(`${init?.method ?? 'GET'} ${path} failed: ${res.status}`)
+    // Every server error route responds with { error: string } (see e.g.
+    // requireVerifiedEmail.ts) — surface that message when present, since
+    // it's usually more useful to a user than a bare status code.
+    const body = await res.json().catch(() => null)
+    throw new Error(body?.error ?? `${init?.method ?? 'GET'} ${path} failed: ${res.status}`)
   }
 
   return res.json() as Promise<T>

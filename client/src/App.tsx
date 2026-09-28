@@ -1,25 +1,18 @@
 import { useEffect, useState } from 'react'
-import { getCategories, type Category } from './api/categories'
+import { Routes, Route, Link, useLocation } from 'react-router-dom'
 import SignupForm from './components/SignupForm'
 import SignInForm from './components/SignInForm'
 import Modal from './components/Modal'
 import { onAuthStateChanged, sendEmailVerification, signOut, type User } from 'firebase/auth'
 import { auth } from './lib/firebase'
-import SearchBox from './components/SearchBox'
+import Home from './pages/Home'
+import CategoryPage from './pages/CategoryPage'
 
 function App() {
-  const [categories, setCategories] = useState<Category[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
   const [user, setUser] = useState<User | null>(null)
   const [authMode, setAuthMode] = useState<'signin' | 'signup' | null>(null)
-
-  useEffect(() => {
-    getCategories()
-      .then(setCategories)
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setLoading(false))
-  }, [])
+  const location = useLocation()
+  const isHome = location.pathname === '/'
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -47,6 +40,12 @@ function App() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-12">
+      {!isHome && (
+        <Link to="/" className="mb-4 inline-block text-sm font-medium text-gray-500 hover:text-gray-900">
+          ← Back to categories
+        </Link>
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-semibold text-gray-900">BestEver</h1>
@@ -103,27 +102,10 @@ function App() {
         {authMode === 'signin' && <SignInForm onClose={() => setAuthMode(null)} />}
       </Modal>
 
-      <ul className="mt-8 divide-y divide-gray-200 rounded-lg border border-gray-200">
-        {loading && <li className="px-4 py-3 text-gray-500">Loading categories…</li>}
-
-        {error && (
-          <li className="px-4 py-3 text-red-600">
-            Couldn't load categories: {error}
-          </li>
-        )}
-
-        {!loading && !error && categories.length === 0 && (
-          <li className="px-4 py-3 text-gray-500">No categories yet.</li>
-        )}
-
-        {categories.map((category) => (
-          <li key={category.id} className="px-4 py-3 text-gray-900 hover:bg-gray-50">
-            {category.name}
-          </li>
-        ))}
-      </ul>
-
-      <SearchBox />
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/categories/:slug" element={<CategoryPage user={user} />} />
+      </Routes>
     </div>
   )
 }

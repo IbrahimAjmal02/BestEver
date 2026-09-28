@@ -4,7 +4,7 @@ import type { ExternalSearchResult } from './types.js'
 export async function search(query: string): Promise<ExternalSearchResult[]> {
     try {
         const { statusCode, body } = await request(
-            `https://api.rawg.io/api/games?key=${process.env.RAWG_API_KEY}&search=${encodeURIComponent(query)}`,
+            `https://api.rawg.io/api/games?key=${process.env.RAWG_API_KEY}&search=${encodeURIComponent(query)}&ordering=-added`,
         )
 
         if (statusCode < 200 || statusCode >= 300) {

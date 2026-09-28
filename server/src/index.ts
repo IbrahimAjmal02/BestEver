@@ -3,6 +3,7 @@ import 'dotenv/config'
 import express from 'express'
 import userRouter from './routes/users.js'
 import categoriesRouter from './routes/categories.js'
+import votesRouter from './routes/votes.js'
 
 const PORT = process.env.PORT ?? 4000
 
@@ -24,6 +25,8 @@ app.use(express.json())
 app.use('/categories', categoriesRouter)
 
 app.use('/users', userRouter)
+
+app.use('/vote', votesRouter)
 
 // Kubernetes readiness/liveness-probe convention — keep this working as the
 // project grows, even once real routes exist.

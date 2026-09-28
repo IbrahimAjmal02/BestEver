@@ -29,6 +29,7 @@ model Item {
   id         String  @id @default(uuid())
   name       String
   externalId String? // null for custom (user-added) entries; set for items pulled from an external API
+  imageUrl   String? // optional — custom entries won't have one, some providers (MusicBrainz) never provide one
   voteCount  Int     @default(0)
 
   categoryId String

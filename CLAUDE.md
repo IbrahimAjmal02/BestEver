@@ -9,11 +9,12 @@ typed in as a custom entry if it's not found. Each category has a live
 leaderboard showing the top 25–50 most-voted items. The whole thing is free
 to use.
 
-Planned categories at launch: **movies, video games, anime, music,
+Planned categories at launch: **movies, video games, anime,
 actors** — more may be added later. (**Places** was in the original plan but
 is deferred for now — no Nominatim integration yet; commented out in
 `prisma/seed.ts` and removed from the seeded database, not deleted from this
-plan permanently.)
+plan permanently. **Musical Artist** is deferred the same way, as of
+2026-09-27 — see "External item search" below for why.)
 
 ## Who's building this and why
 
@@ -137,8 +138,18 @@ entry instead. Planned mapping:
 | Movies       | TMDB                            | Yes |
 | Actors       | TMDB (person search)            | Yes |
 | Video games  | RAWG                            | Yes |
-| Anime        | Jikan (MyAnimeList, unofficial) | No |
-| Music        | MusicBrainz                     | No (needs User-Agent header) |
+| Anime        | MyAnimeList (official API)      | Yes (Client ID, no OAuth needed for search) |
+<!-- | Musical Artist | MusicBrainz + Deezer          | No |  -->
+<!-- Musical Artist deferred as of 2026-09-27 — MusicBrainz is an open, wiki-style
+     catalog (anyone can add an entry) with no popularity data of its own; even
+     after layering Deezer on top for images + a popularity signal (see
+     musicbrainz.ts, kept but disconnected from registry.ts), a search still
+     surfaces a lot of genuinely obscure same-named entries. Checked whether a
+     single curated source (Spotify) would solve this cleanly instead — no:
+     Spotify's Feb 2026 API changes moved away from the Client Credentials
+     flow for metadata endpoints and dropped `popularity`/`followers` from some
+     responses, i.e. the exact flow and fields this use case needs, so it's
+     currently a worse fit than before, not a fix. -->
 <!-- | Places       | OpenStreetMap Nominatim         | No (needs User-Agent header, rate-limited) | -->
 <!-- Places deferred for now, see "Planned categories at launch" above -->
 
@@ -175,11 +186,35 @@ repo state, don't assume this file is fully current.** Roughly:
       signed in — driven by an `onAuthStateChanged` listener in `App.tsx`.
       **Verified live end-to-end** with a real throwaway account: signup →
       Firebase account created → UI correctly flips to signed-in state
-- [x] Email verification (partial — frontend only): `sendEmailVerification`
-      fires on signup; `App.tsx` shows a "please verify" banner with
-      resend/refresh actions when `user.emailVerified` is false. **Backend
-      enforcement not done** — nothing server-side blocks unverified users
-      from protected actions yet; deferred until the vote route exists
+- [x] Email verification — frontend (`sendEmailVerification` on signup,
+      `App.tsx`'s "please verify" banner) **and now backend enforcement**
+      (2026-09-28), added once the vote routes existed. `requireAuth`
+      already gets `email_verified` for free as a standard claim on the
+      decoded Firebase ID token — no extra Admin SDK call needed — so it
+      now also attaches `req.firebaseEmailVerified`. New middleware
+      `requireVerifiedEmail` (`server/src/middleware/`) checks that flag,
+      403s with `{ error: 'Please verify your email address before voting' }`
+      if false. **Deliberately kept separate from `requireAuth`**, not
+      merged in — `POST /users/sync` runs right after signup, before
+      there's been time to click a verification email, so if verification
+      gated every authenticated route the very first sync call would fail
+      and break signup. Applied only to `POST /vote` and `PUT /vote` (the
+      actual cast/change actions) — not `DELETE /vote` (removing your own
+      vote has no unfair-advantage risk) and not item creation (harmless on
+      its own without a vote attached).
+      **`apiFetch` improved alongside this**: it was discarding the
+      server's actual `{ error }` message and throwing a bare
+      `"POST /vote failed: 403"` — now it parses and surfaces that message,
+      so this fix (and every other route's specific error, e.g. the `409`
+      "already voted" case) reaches the user instead of a generic
+      "Something went wrong" in `CategoryPage.tsx`.
+      **Verified live**: a throwaway unverified account got a real `403`
+      with the exact message on `POST /vote`; marking it verified via the
+      Admin SDK + fetching a fresh ID token (the old token still says
+      unverified — verification status is baked into the token at
+      issuance) let the same vote succeed with `200`. Also verified through
+      the actual browser UI via Playwright — the specific message rendered
+      correctly in `CategoryPage`'s error banner, not a generic one.
 - [x] Backend sync route — `POST /users/sync` (`server/src/routes/users.ts`),
       protected by `requireAuth`, upserts a `User` row keyed on
       `firebaseUid`. `requireAuth` attaches `req.firebaseEmail` too.
@@ -204,6 +239,39 @@ repo state, don't assume this file is fully current.** Roughly:
       `jikan.ts` now uses `undici.request()` instead of `fetch()`; **any
       future provider module that behaves strangely with plain `fetch()`
       should try this same swap before assuming the API itself is broken**.
+- [x] **Anime provider swapped from Jikan to the official MyAnimeList API**
+      (`jikan.ts` deleted, replaced by `server/src/external/myanimelist.ts`;
+      `registry.ts`'s `anime` entry repointed). Reason: Jikan (the unofficial
+      proxy above) announced a full shutdown — brownout since 2026-09-01,
+      full discontinuation 2026-10-01 — which in hindsight likely explains a
+      lot of the `504`/flakiness debugged above, not just a `fetch()` quirk.
+      The official API turned out to be simpler than expected: read-only
+      search only needs a `Client ID` sent as an `X-MAL-CLIENT-ID` header
+      (from `myanimelist.net/apiconfig`) — no OAuth flow, since we never
+      touch a user's personal MAL list. Response shape differs from Jikan's
+      (`{ data: [{ node: { id, title, main_picture: { medium, large } } }] }`
+      vs. Jikan's flatter `{ data: [{ mal_id, title, images }] }`), and the
+      `fields=` query param must explicitly list `main_picture` or no image
+      comes back at all. Still uses `undici.request()` per the habit above,
+      even though this API hasn't shown the same `fetch()` issue.
+      **Verified live** through the real `GET /categories/anime/search?q=`
+      route across several queries (naruto, attack on titan, one piece,
+      demon slayer, cowboy bebop) — all returned real results with working
+      image URLs, unlike Jikan which had degraded to reliably working for
+      "naruto" only near the end.
+      **Popularity re-sorting, done client-side (in `myanimelist.ts` itself),
+      not via a query param** — unlike RAWG, MAL's `/v2/anime` search
+      endpoint has no ordering parameter at all (confirmed empirically:
+      `order_by=popularity` and `sort=bypopularity` both silently no-op —
+      ranking/popularity sorting only exists on the separate `/ranking`
+      endpoint, which doesn't accept a text query). Same underlying problem
+      as RAWG though: searching "love" returned an obscure anime literally
+      titled "Love" (378 list users) ahead of a show with 1.5M viewers,
+      purely on exact title match. Fixed by requesting the `popularity`
+      field (a rank — 1 is most popular) alongside `title`/`main_picture`,
+      then sorting our own mapped results by it (ascending, missing values
+      sort last) before returning them — the API won't do this for us, so
+      it happens in our own code instead of a URL param.
 - [x] TMDB Movies provider (`server/src/external/tmdb.ts`, `searchMovies`)
       — registered in `registry.ts` under `movies`, **verified live**
       end-to-end through the real `GET /categories/movies/search?q=` route.
@@ -224,42 +292,207 @@ repo state, don't assume this file is fully current.** Roughly:
       `background_image` is already a full URL or `null` (like Jikan, not
       like TMDB's relative paths needing a prefix)
 
-**All five external search providers are now done and verified live**
-(Anime/Jikan, Movies+Actors/TMDB, Music/MusicBrainz, Video games/RAWG) —
-the entire "External item search integration" line item from earlier in
-this file is complete at the API level. What's NOT done: the frontend
-(`SearchBox`) still only exposes Anime to an actual user — see below.
-- [x] MusicBrainz (Music) provider (`server/src/external/musicbrainz.ts`)
-      — registered under `music`, **verified live** through the real route.
-      **Design decision**: searches MusicBrainz's `artist` entity (singers/
-      bands), not `recording` (individual songs) — "Best Music Ever" votes
-      on artists, matching how Actors is a separate category from Movies
-      rather than folding performers into the same vote. `User-Agent:
-      BestEver/1.0 (ibrahimajmal02@gmail.com)` sent per their usage policy.
-      No `imageUrl` — MusicBrainz's core API doesn't include artist photos;
-      would need a separate lookup (not done)
-- [ ] Frontend: `SearchBox` is currently hardcoded to the `'anime'` category
-      and rendered directly on the homepage (`App.tsx`) — temporary,
-      pending real routing (none exists yet) and the category/voting page
-      below, at which point it should take the category as a prop instead
-- [ ] Item creation — `POST /categories/:slug/items`, find-or-create against
-      the `[categoryId, externalId]` unique constraint (handles both a
-      selected external search result and a custom typed entry)
-- [ ] Voting API routes — `POST /vote` (cast), `PUT /vote` (change an
-      existing vote — one per category, re-voting moves it rather than
-      failing), `DELETE /vote/:categoryId` (remove), `GET
-      /categories/:slug/my-vote` (so the UI can show "you voted for X").
-      Casting/changing a vote must be a Prisma **transaction** that also
-      increments/decrements the target `Item.voteCount` — see the
-      denormalized-counter note above, don't drop this into a plain COUNT
+**Four of five external search providers are live** (Anime/MyAnimeList,
+Movies+Actors/TMDB, Video games/RAWG) — the "External item search
+integration" line item is complete at the API level for launch categories.
+Musical Artist was built (below) but is **deferred as of 2026-09-27** — see
+"External item search" above for why — not deleted, same treatment as Places.
+- [~] MusicBrainz (Musical Artist) provider (`server/src/external/musicbrainz.ts`)
+      — **deferred, disconnected from `registry.ts` (commented out) and the
+      `Category` row deleted from the live DB**, so this file is currently
+      unreachable dead code, kept for whenever a better data source exists.
+      Was registered under `musical-artist` (category renamed from "Music" to
+      "Musical Artist" — the live DB row was updated directly since a slug
+      change isn't a schema migration, just data; `seed.ts` and
+      `registry.ts`'s key were updated to match), **verified live** through
+      the real route before being deferred. **Design decision**: searches
+      MusicBrainz's `artist`
+      entity (singers/bands), not `recording` (individual songs) — matches
+      how Actors is a separate category from Movies rather than folding
+      performers into the same vote. `User-Agent: BestEver/1.0
+      (ibrahimajmal02@gmail.com)` sent per their usage policy.
+      **Artist photos added via Deezer's public search API** (free, no key)
+      — MusicBrainz itself is pure metadata (no photos, no popularity data
+      by design), so for each MusicBrainz result we do a parallel Deezer
+      lookup by name and attach `picture_medium` if found; each lookup
+      fails soft on its own so one bad match can't break the batch. Real
+      limitation: Deezer is a separate catalog with no shared ID to
+      MusicBrainz, so this is name-only matching — obscure/regional artists
+      often aren't on Deezer at all (→ no image, fine, same as before), and
+      **grabbing Deezer's first search hit was confirmed live to pick the
+      wrong same-named artist** (searching "drake" attached a 119-fan
+      artist's photo instead of the real Drake's, who has 24M). Fixed by
+      picking the Deezer candidate with the highest `nb_fan` instead of
+      index 0 — doesn't eliminate the ambiguous-name risk entirely, but
+      "most famous person with this name" is a much better guess than
+      "whatever Deezer's internal index returned first."
+      **Popularity sorting**: MusicBrainz's search has no ordering param at
+      all (nothing to sort by — it has no popularity metric, unlike RAWG's
+      `added` or MAL's `popularity` rank), and its default order is text-
+      match relevance only, so an obscure artist could rank above a famous
+      one with the same/similar name. Since we're already fetching Deezer's
+      `nb_fan` per result for the image-matching fix above, it doubles as
+      the popularity signal MusicBrainz can't provide — results are
+      re-sorted by `nb_fan` descending before returning. **Verified live**:
+      "drake" now returns the real Drake (correct photo) first; "beatles"
+      regression-checked, still correct.
+- [x] Item creation — `POST /categories/:slug/items` (in `categories.ts`),
+      protected by `requireAuth`. `Item.imageUrl` field added via migration
+      first (was missing). Find-or-create (`upsert` on the
+      `categoryId_externalId` compound unique key) when `externalId` is
+      provided; always a plain `create` (no dedup) for custom entries with
+      no `externalId`, since `null` can't be meaningfully matched against
+      and free-text can't be reliably deduped anyway. **Verified live**,
+      all four cases: external item created, same external item reused
+      (not duplicated) on a second call, two custom entries with identical
+      names correctly got separate rows, missing auth → `401`, unknown
+      category → `404`. One TS gotcha hit and fixed: adding `requireAuth`
+      as middleware caused `req.params.slug` to lose its specific string
+      inference (fell back to `string | string[]`) — fixed with an
+      explicit `as string` assertion, safe since `:slug` is always a
+      single path segment, never an array in practice
+- [ ] (Future idea, deliberately deferred) Show live vote counts on search
+      results, not just the leaderboard — would need the search route to
+      cross-reference results against existing `Item` rows for their
+      `voteCount` (defaulting to 0), plus a new field on the shared
+      `ExternalSearchResult` type. Deferred until voting exists, since every
+      result would show 0 right now regardless
+- [x] Voting API routes — all four done in `server/src/routes/votes.ts`
+      (`POST`/`PUT`/`DELETE`) and `server/src/routes/categories.ts`
+      (`GET /:slug/my-vote`, kept there since it's slug-driven like the
+      rest of that file). `POST /vote` does a plain `vote.create()` +
+      `voteCount` increment in a transaction; the `@@unique([userId,
+      categoryId])` constraint (not `itemId`) is what blocks a second vote
+      in the same category, surfaced as Prisma error `P2002` → `409`.
+      `PUT /vote` looks up the existing `(userId, categoryId)` vote row,
+      404s if none exists (use `POST` to cast a first vote), no-ops if the
+      same item is resubmitted, otherwise a 3-step transaction: repoint the
+      vote's `itemId`, decrement the old item's `voteCount`, increment the
+      new item's. `DELETE /vote/:categoryId` (categoryId is the actual
+      Category id, not the slug — matches how it's stored on `Vote`) deletes
+      the vote row + decrements the item's `voteCount`, also in a
+      transaction. **Verified live end-to-end** via a throwaway Firebase
+      test account (created directly through Firebase's REST API — no
+      frontend needed, since the client SDK is just a wrapper over that same
+      REST API) and two custom test items: cast → dup vote correctly `409`s
+      → `my-vote` reflects it → `PUT` moves the vote → `my-vote` and
+      leaderboard `voteCount`s both update correctly → `DELETE` removes it
+      → `my-vote` returns `null` again. Test data and the throwaway Firebase
+      account were deleted afterward.
 - [ ] Profile page — a page showing the logged-in user's own votes across
       every category. Needs a new backend route (not yet planned in detail)
       to fetch a user's votes joined with their item/category info, e.g.
       `GET /me/votes`, protected by `requireAuth`
-- [ ] Frontend: category/voting page (search UI + custom-entry fallback +
-      cast-vote UI, per category)
-- [ ] Frontend: leaderboard UI page (consumes the existing
-      `GET /categories/:slug/leaderboard` route)
+- [x] Client-side routing added (`react-router-dom`, `BrowserRouter` in
+      `main.tsx`). `App.tsx` is now a layout (header, auth modal) rendering
+      `<Routes>`: `/` → `pages/Home.tsx` (the categories list, now `Link`s
+      instead of plain `<li>`s), `/categories/:slug` → `pages/CategoryPage.tsx`.
+      `user` (the Firebase `User`, needed for `getIdToken()`) is passed down
+      as a prop from `App` rather than introduced via Context — simplest
+      option for a two-route app, revisit if more pages need it.
+- [x] Frontend: category/voting page (`pages/CategoryPage.tsx`) — combines
+      search, a custom-entry fallback, and the leaderboard on one page per
+      category (a deliberate choice: one page per category rather than
+      separate search/leaderboard pages, since a voter naturally wants both
+      at once). `SearchBox` was generalized to take `categorySlug` +
+      `onSelect` props instead of being hardcoded to `'anime'` — it now just
+      surfaces the picked result rather than owning the vote flow itself.
+      Selecting a search result or submitting the custom-entry form both
+      call a shared `voteFor()`: find-or-create the `Item`
+      (`POST /categories/:slug/items`), then `castVote` if the user has no
+      existing vote in this category or `changeVote` if they do (checked via
+      `GET /:slug/my-vote`) — mirrors the backend distinction between `POST`
+      and `PUT /vote`. A "Remove vote" button calls `DELETE /vote/:categoryId`.
+      New client API modules: `api/votes.ts` (cast/change/remove), and
+      `getLeaderboard`/`getMyVote`/`createItem` added to `api/categories.ts`.
+      **Verified live** with a real Playwright browser session against a
+      throwaway Firebase account created via the REST API (signed in through
+      the actual `SignInForm` UI, not mocked): sign in → click into
+      `/categories/movies` → add a custom entry → vote banner and leaderboard
+      both update to show it with 1 vote → remove vote → banner disappears.
+      **Note**: the leaderboard route has no `voteCount > 0` filter, so after
+      removing a vote the item stays visible at 0 votes rather than
+      disappearing — confirmed this is the existing `GET /:slug/leaderboard`
+      behavior, not a bug introduced here; flagging in case it's worth a
+      filter later.
+      **Custom-entry form commented out for now** (2026-09-28) — the
+      "Can't find it? Add it by name..." input + `handleCustomEntrySubmit`
+      + `customName` state are all still in `CategoryPage.tsx`, just
+      commented out (not deleted), same treatment as deferred categories.
+      Search + leaderboard-button voting are the only ways to vote right
+      now; `voteFor()` (the shared find-or-create-then-vote logic) is still
+      wired up and used by `handleSelectResult`, so re-enabling this later
+      is just uncommenting the state/handler/JSX.
+      **"Find an existing vote" — a second, separate search bar** added
+      above the leaderboard, searching Items already in OUR db (not the
+      external provider) by name. New backend route
+      `GET /categories/:slug/items?q=` (`categories.ts`, public, no auth —
+      read-only, same as leaderboard/search) does a case-insensitive
+      `contains` match on `Item.name` scoped to the category, ordered by
+      `voteCount` desc, capped at 25. Exists because the leaderboard itself
+      is capped at 25 (`take: 25`), so something with votes could exist in
+      the db but not be visible anywhere on the page — this lets someone
+      find and vote/change-vote for it directly, reusing a new shared
+      `renderVoteAction(item)` helper (factored out of the leaderboard row
+      JSX, since both lists need the identical Vote/Change vote/✓ Your vote
+      logic). New client fn: `searchItems(slug, query)` in `api/categories.ts`.
+      **Deliberately kept as a separate box from the external-API `SearchBox`
+      above it**, not merged into one — discussed merging (external results
+      annotated with their existing db vote count) and decided against it:
+      merging means paying for a db lookup per external result (or per
+      keystroke) even for people who only ever use one of the two boxes,
+      and still wouldn't surface db-only custom entries (no `externalId` to
+      match external results against) without a second query anyway — no
+      actual savings, just added complexity for both paths.
+      **Real bug found via live verification and fixed**: after voting
+      through this box, `refresh()` updated the leaderboard and `myVote`
+      but not `dbResults` — the visible search-results panel kept showing
+      the stale pre-vote count until manually re-searched. Fixed by having
+      `refresh()` also re-run `searchItems()` when `dbHasSearched` is true.
+      **Verified live** end-to-end via Playwright with a real signed-in
+      throwaway account: searched "in" → found "Inception" (existing db
+      item, outside the visible leaderboard at the time) with its real
+      vote count → voted for it → banner and the search panel itself both
+      updated live, confirming the refresh fix.
+- [x] Total-votes-per-category + percentages, shown at the top of
+      `CategoryPage.tsx` ("X total votes cast") and as `x/total (pct%)` on
+      every leaderboard row and every "find an existing vote" search
+      result, via a new shared `renderVoteCount(item)` helper. New route
+      `GET /categories/:slug/total-votes` (`categories.ts`, public) returns
+      a live `prisma.vote.count({ where: { categoryId } })` — **deliberately
+      not a new denormalized `Category` counter column**, unlike
+      `Item.voteCount`. The distinction: `Item.voteCount` is read once PER
+      ITEM on every render (25+ COUNTs per page load if computed live —
+      genuinely expensive, hence denormalized), while a category's total is
+      read ONCE per page load regardless of how many items exist — a plain
+      `COUNT` is already cheap, so adding a third write to every vote
+      transaction for it would be pure complexity with no real payoff at
+      this scale. Since `Vote` has `@@unique([userId, categoryId])`, this
+      count literally equals "how many people voted here," the correct
+      percentage denominator. New client fn: `getTotalVotes(slug)` in
+      `api/categories.ts`. **Verified live**: cast a new vote as a fresh
+      throwaway voter and confirmed the total incremented correctly and
+      every percentage (leaderboard rows, DB-search rows, top summary)
+      stayed consistent with each other. One live-testing wrinkle worth
+      recording, not a bug: the "before" count jumped by 2 instead of 1
+      during verification, because the project owner was concurrently
+      voting in their own browser tab during the test — `Vote.count()`
+      correctly counted both real voters, confirming the logic rather than
+      contradicting it.
+- [ ] Frontend: leaderboard UI page — folded into the category/voting page
+      above rather than built as its own separate page; leaving this line to
+      note the original plan changed, not because a standalone page is still
+      needed
+- [x] Homepage top-5 preview strips — each category card on `Home.tsx` now
+      shows a horizontal row of its top 5 leaderboard items via a new
+      `client/src/components/CategoryTopFive.tsx` (self-contained: fetches
+      `getLeaderboard(slug)` itself, `.slice(0, 5)`). Bigger images (80×80)
+      than the small leaderboard thumbnails on `CategoryPage`, a numbered
+      rank badge in the corner, and truncated name subtext underneath.
+      Items with no `imageUrl` (custom entries) get a placeholder box with
+      the name's first letter instead of a broken image. **Verified live**
+      via Playwright + screenshot across Movies/Video Games/Anime/Actors —
+      all rendered correctly with real images and correct rank order.
 - [ ] Frontend: profile page (consumes the new `GET /me/votes` route above)
 - [ ] Docker (both services)
 - [ ] Kubernetes manifests
