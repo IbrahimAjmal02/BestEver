@@ -48,7 +48,7 @@ function App() {
         </Link>
       )}
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <img src="/bestever-panther.png" alt="" className="h-20 w-20" />
           <div>
@@ -58,15 +58,15 @@ function App() {
         </div>
 
         {user ? (
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-gray-600">{user.email}</span>
-            <Link to="/profile" className="text-sm font-medium text-gray-900 hover:underline">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="whitespace-nowrap text-sm text-gray-600">{user.email}</span>
+            <Link to="/profile" className="whitespace-nowrap text-sm font-medium text-gray-900 hover:underline">
               Profile
             </Link>
             <button
               type="button"
               onClick={handleSignOut}
-              className="rounded-md bg-gray-900 px-4 py-2 font-medium text-white hover:bg-gray-800"
+              className="whitespace-nowrap rounded-md bg-gray-900 px-4 py-2 font-medium text-white hover:bg-gray-800"
             >
               Sign out
             </button>
