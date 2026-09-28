@@ -198,10 +198,20 @@ repo state, don't assume this file is fully current.** Roughly:
       merged in — `POST /users/sync` runs right after signup, before
       there's been time to click a verification email, so if verification
       gated every authenticated route the very first sync call would fail
-      and break signup. Applied only to `POST /vote` and `PUT /vote` (the
-      actual cast/change actions) — not `DELETE /vote` (removing your own
-      vote has no unfair-advantage risk) and not item creation (harmless on
-      its own without a vote attached).
+      and break signup. Applied to `POST /vote`, `PUT /vote`, and
+      `POST /categories/:slug/items` — not `DELETE /vote` (removing your
+      own vote has no unfair-advantage risk).
+      **Item creation was NOT gated initially** — reasoned it was "harmless
+      on its own without a vote attached," which missed a real spam vector:
+      custom entries (no `externalId`) never dedupe by design (`create()`
+      every call, no upsert — an old, deliberate tradeoff since free text
+      can't be reliably matched), and Firebase signup needs zero
+      verification to get a valid token. An unverified account could've
+      scripted that route in a loop and filled the `Item` table with junk
+      that could never even be voted for, since voting was the only gated
+      step. Caught via a user question ("how can you create an item
+      without verifying if you can't vote") rather than found proactively
+      — fixed by adding `requireVerifiedEmail` to that route too.
       **`apiFetch` improved alongside this**: it was discarding the
       server's actual `{ error }` message and throwing a bare
       `"POST /vote failed: 403"` — now it parses and surfaces that message,
@@ -215,6 +225,9 @@ repo state, don't assume this file is fully current.** Roughly:
       issuance) let the same vote succeed with `200`. Also verified through
       the actual browser UI via Playwright — the specific message rendered
       correctly in `CategoryPage`'s error banner, not a generic one.
+      Item-creation gating separately verified live too: an unverified
+      account's `POST /categories/:slug/items` got a real `403`, and
+      nothing was persisted (no orphaned `Item` row to clean up afterward).
 - [x] Backend sync route — `POST /users/sync` (`server/src/routes/users.ts`),
       protected by `requireAuth`, upserts a `User` row keyed on
       `firebaseUid`. `requireAuth` attaches `req.firebaseEmail` too.
@@ -379,10 +392,18 @@ Musical Artist was built (below) but is **deferred as of 2026-09-27** — see
       leaderboard `voteCount`s both update correctly → `DELETE` removes it
       → `my-vote` returns `null` again. Test data and the throwaway Firebase
       account were deleted afterward.
-- [ ] Profile page — a page showing the logged-in user's own votes across
-      every category. Needs a new backend route (not yet planned in detail)
-      to fetch a user's votes joined with their item/category info, e.g.
-      `GET /me/votes`, protected by `requireAuth`
+- [x] Profile page — `GET /me/votes` (new `server/src/routes/me.ts`,
+      mounted at `/me` in `index.ts`), protected by `requireAuth` only, not
+      `requireVerifiedEmail` — viewing your own past votes carries none of
+      the risk casting one does. One query, `prisma.vote.findMany({ where:
+      { userId }, include: { item: true, category: true } })`, joins both
+      in rather than making the frontend stitch separate calls together.
+      Frontend: `client/src/pages/ProfilePage.tsx` (new route `/profile`,
+      a "Profile" link in the header next to the signed-in email), backed
+      by `client/src/api/me.ts`'s `getMyVotes()`. **Verified live**: real
+      throwaway account, cast a vote, navigated to `/profile`, confirmed
+      the item name + category both rendered, and clicking the category
+      name correctly linked back to that category's page.
 - [x] Client-side routing added (`react-router-dom`, `BrowserRouter` in
       `main.tsx`). `App.tsx` is now a layout (header, auth modal) rendering
       `<Routes>`: `/` → `pages/Home.tsx` (the categories list, now `Link`s
@@ -493,9 +514,72 @@ Musical Artist was built (below) but is **deferred as of 2026-09-27** — see
       the name's first letter instead of a broken image. **Verified live**
       via Playwright + screenshot across Movies/Video Games/Anime/Actors —
       all rendered correctly with real images and correct rank order.
-- [ ] Frontend: profile page (consumes the new `GET /me/votes` route above)
-- [ ] Docker (both services)
-- [ ] Kubernetes manifests
+- [~] Docker — `server/` done and verified live; `client/` not started yet.
+      `server/Dockerfile` is a multi-stage build: stage 1 installs full deps
+      (needs `prisma` and `typescript`, both devDependencies), runs
+      `npx prisma generate` (schema-driven, not DB-driven — no DATABASE_URL
+      needed for this step), then `tsc`; stage 2 is a fresh `node:25-alpine`
+      with only production deps (`npm ci --omit=dev`) + the compiled
+      `dist/` (which already includes `dist/generated/prisma`, since that's
+      just regular TS source under `src/` — no separate copy step needed).
+      `server/.dockerignore` excludes `node_modules`, `dist`, `.env`, and
+      `firebase/firebase-service-account.json` — never bake secrets into
+      an image; they get injected at container-*run* time instead (an
+      `--env-file` locally, a Kubernetes `Secret` later).
+
+      **Real blocker hit and fixed**: `firebaseAdmin.ts` used to
+      `import serviceAccount from '.../firebase-service-account.json'` —
+      a *compile-time* import, which directly conflicts with that file
+      being excluded from the Docker build context (`tsc` needs the file
+      to exist to compile, but it can't exist in the image). Fixed by
+      refactoring `firebaseAdmin.ts` to build credentials from three env
+      vars instead — `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`,
+      `FIREBASE_PRIVATE_KEY` (the private key's PEM newlines are stored as
+      literal `\n` and converted back with `.replace(/\\n/g, '\n')` at
+      runtime) — same pattern every other secret in this project already
+      uses. Added to `.env.example`.
+
+      **Second real blocker**: Docker's `--env-file` parser is much
+      stricter than Node's `dotenv` — it does NOT strip surrounding quotes
+      the way `dotenv` does, and does NOT support a quoted value spanning
+      multiple physical lines. Two separate values in `server/.env` broke
+      because of this: `FIREBASE_PRIVATE_KEY` (had been accidentally
+      written with *real* newline bytes instead of literal `\n` — a subtle
+      bug from Python's `json.load` silently decoding `\n` escapes when
+      the key was first extracted from the service-account JSON) and
+      `DATABASE_URL` (was wrapped in `"..."`, which `dotenv` strips but
+      Docker doesn't — so inside the container the value literally started
+      and ended with a `"` character, breaking both URL and Prisma
+      connection-string parsing, surfacing as `/categories` returning
+      500 with a nonsense "Can't reach database server at base" error).
+      Lesson for any future env var: it must work correctly under *both*
+      parsers — no surrounding quotes, no embedded real newlines, single
+      physical line only.
+
+      **Security incident during this debugging**: a connectivity-test
+      command leaked the real `DATABASE_URL` (RDS password included) into
+      the conversation transcript via an unhandled parse-error dump.
+      **The RDS master password should be rotated** (AWS console → Modify,
+      or `ALTER USER postgres WITH PASSWORD '...'`) — not yet confirmed
+      done as of this note. Root cause of the exposure: no sanitization
+      around a command touching a secret value; going forward, any
+      diagnostic touching `DATABASE_URL` or other secrets should extract
+      only non-secret fields (e.g. hostname) or wrap parsing in try/catch
+      that never logs the raw input.
+
+      **Verified live**: `docker build` succeeds; the running container's
+      `/health` (no dependencies) and `/categories` (real Postgres query)
+      and `POST /users/sync` (real Firebase Admin SDK token verification)
+      all returned correct responses, confirming both refactored secret
+      paths work end-to-end inside the container, not just locally.
+- [ ] Docker — `client/` (different shape: builds to static files, likely
+      served via nginx, not a long-running Node process)
+- [ ] `docker-compose.yml` for running both services together locally
+- [ ] Kubernetes manifests — local cluster first (Docker Desktop's
+      Kubernetes or minikube/kind), not straight to a cloud cluster (EKS
+      would match the existing AWS/RDS setup eventually, but is a much
+      bigger jump — real cost, VPC/IAM networking, an ECR registry — before
+      the K8s manifests themselves are even confirmed correct)
 - [ ] Deployment
 
 ## Working conventions

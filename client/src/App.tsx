@@ -7,6 +7,7 @@ import { onAuthStateChanged, sendEmailVerification, signOut, type User } from 'f
 import { auth } from './lib/firebase'
 import Home from './pages/Home'
 import CategoryPage from './pages/CategoryPage'
+import ProfilePage from './pages/ProfilePage'
 
 function App() {
   const [user, setUser] = useState<User | null>(null)
@@ -55,6 +56,9 @@ function App() {
         {user ? (
           <div className="flex items-center gap-3">
             <span className="text-sm text-gray-600">{user.email}</span>
+            <Link to="/profile" className="text-sm font-medium text-gray-900 hover:underline">
+              Profile
+            </Link>
             <button
               type="button"
               onClick={handleSignOut}
@@ -105,6 +109,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/categories/:slug" element={<CategoryPage user={user} />} />
+        <Route path="/profile" element={<ProfilePage user={user} />} />
       </Routes>
     </div>
   )

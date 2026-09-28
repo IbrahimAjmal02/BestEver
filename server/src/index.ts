@@ -4,6 +4,7 @@ import express from 'express'
 import userRouter from './routes/users.js'
 import categoriesRouter from './routes/categories.js'
 import votesRouter from './routes/votes.js'
+import meRouter from './routes/me.js'
 
 const PORT = process.env.PORT ?? 4000
 
@@ -27,6 +28,8 @@ app.use('/categories', categoriesRouter)
 app.use('/users', userRouter)
 
 app.use('/vote', votesRouter)
+
+app.use('/me', meRouter)
 
 // Kubernetes readiness/liveness-probe convention — keep this working as the
 // project grows, even once real routes exist.

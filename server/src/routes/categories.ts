@@ -2,6 +2,7 @@ import express from 'express'
 import { prisma } from '../lib/prisma.js'
 import { providers } from '../external/registry.js'
 import { requireAuth } from '../middleware/requireAuth.js'
+import { requireVerifiedEmail } from '../middleware/requireVerifiedEmail.js'
 
 const router = express.Router()
 
@@ -112,7 +113,7 @@ router.get('/:slug/my-vote', requireAuth, async (req, res) => {
     res.json(vote)
 })
 
-router.post('/:slug/items', requireAuth, async (req, res) => {
+router.post('/:slug/items', requireAuth, requireVerifiedEmail, async (req, res) => {
     const slug = req.params.slug as string
     const { externalId, name, imageUrl } = req.body
 

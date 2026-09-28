@@ -1,0 +1,28 @@
+# 1. node_modules — the image installs its own inside the container (from
+#    package-lock.json), so copying your host's node_modules in would both
+#    bloat the build AND risk shipping native-dependency binaries built for
+#    your Mac's architecture into a container that might run on a different
+#    one (e.g. linux/amd64 in the cloud vs your Mac's arm64).
+node_modules
+
+# 2. dist — same idea: the Dockerfile will run `tsc` itself inside the
+#    build stage and produce a fresh dist/, so your local one (if it even
+#    exists) shouldn't be copied in.
+dist
+
+# 3. .env — never bake secrets into an image. Anyone who ever pulls or
+#    inspects the image could extract them from its layers, even from a
+#    layer that gets "overwritten" later — image layers are historical, not
+#    just a final snapshot. Secrets come in at container-RUN time instead
+#    (env vars now, a Kubernetes Secret later).
+.env
+
+# 4. The Firebase service account JSON — same reasoning as .env, arguably
+#    even more sensitive (server/firebase/firebase-service-account.json).
+firebase/firebase-service-account.json
+
+# 5. Anything else that's dev-only noise and irrelevant inside a container:
+#    git metadata itself (.git), and this repo's own tsconfig.tsbuildinfo
+#    (an incremental-build cache file, meaningless in a fresh container).
+.git
+tsconfig.tsbuildinfo

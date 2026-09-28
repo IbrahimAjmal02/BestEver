@@ -243,13 +243,29 @@ export default function CategoryPage({ user }: CategoryPageProps) {
         Search what's already been voted on here — including things that fell off the top 25 below.
       </p>
       <form onSubmit={handleDbSearch} className="mt-3 flex gap-2">
-        <input
-          type="text"
-          value={dbQuery}
-          onChange={(e) => setDbQuery(e.target.value)}
-          placeholder="Search existing votes..."
-          className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-gray-900 placeholder:text-gray-400 focus:border-gray-400 focus:outline-none"
-        />
+        <div className="relative flex-1">
+          <input
+            type="text"
+            value={dbQuery}
+            onChange={(e) => setDbQuery(e.target.value)}
+            placeholder="Search existing votes..."
+            className="w-full rounded-md border border-gray-300 px-3 py-2 pr-9 text-gray-900 placeholder:text-gray-400 focus:border-gray-400 focus:outline-none"
+          />
+          {dbQuery && (
+            <button
+              type="button"
+              onClick={() => {
+                setDbQuery('')
+                setDbResults([])
+                setDbHasSearched(false)
+              }}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              ✕
+            </button>
+          )}
+        </div>
         <button
           type="submit"
           className="rounded-md bg-gray-900 px-4 py-2 font-medium text-white hover:bg-gray-800"

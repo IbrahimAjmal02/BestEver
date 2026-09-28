@@ -7,6 +7,7 @@ export default function Home() {
   const [categories, setCategories] = useState<Category[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [query, setQuery] = useState('')
 
   useEffect(() => {
     getCategories()
@@ -19,22 +20,54 @@ export default function Home() {
   if (error) return <p className="mt-8 text-red-600">Couldn't load categories: {error}</p>
   if (categories.length === 0) return <p className="mt-8 text-gray-500">No categories yet.</p>
 
-  return (
-    <div className="mt-8 flex flex-col gap-6">
-      {categories.map((category) => (
-        <div key={category.id} className="rounded-lg border border-gray-200 p-4">
-          <Link
-            to={`/categories/${category.slug}`}
-            className="text-lg font-semibold text-gray-900 hover:underline"
-          >
-            {category.name}
-          </Link>
+  // Small, fixed list of categories, all already fetched — filtering
+  // locally is simpler and faster than a round trip for this.
+  const filteredCategories = categories.filter((category) =>
+    category.name.toLowerCase().includes(query.toLowerCase()),
+  )
 
-          <div className="mt-3">
-            <CategoryTopFive slug={category.slug} />
+  return (
+    <div className="mt-8">
+      <div className="relative">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search categories..."
+          className="w-full rounded-md border border-gray-300 px-3 py-2 pr-9 text-gray-900 placeholder:text-gray-400 focus:border-gray-400 focus:outline-none"
+        />
+        {query && (
+          <button
+            type="button"
+            onClick={() => setQuery('')}
+            aria-label="Clear search"
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+
+      {filteredCategories.length === 0 && (
+        <p className="mt-4 text-sm text-gray-500">No categories match "{query}".</p>
+      )}
+
+      <div className="mt-6 flex flex-col gap-6">
+        {filteredCategories.map((category) => (
+          <div key={category.id} className="rounded-lg border border-gray-200 p-4">
+            <Link
+              to={`/categories/${category.slug}`}
+              className="text-lg font-semibold text-gray-900 hover:underline"
+            >
+              {category.name}
+            </Link>
+
+            <div className="mt-3">
+              <CategoryTopFive slug={category.slug} />
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   )
 }
