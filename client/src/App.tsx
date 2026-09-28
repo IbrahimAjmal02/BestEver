@@ -8,6 +8,7 @@ import { auth } from './lib/firebase'
 import Home from './pages/Home'
 import CategoryPage from './pages/CategoryPage'
 import ProfilePage from './pages/ProfilePage'
+import NotFound from './pages/NotFound'
 
 function App() {
   const [user, setUser] = useState<User | null>(null)
@@ -110,6 +111,7 @@ function App() {
         <Route path="/" element={<Home />} />
         <Route path="/categories/:slug" element={<CategoryPage user={user} />} />
         <Route path="/profile" element={<ProfilePage user={user} />} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </div>
   )
