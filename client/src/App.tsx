@@ -49,9 +49,12 @@ function App() {
       )}
 
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-semibold text-gray-900">BestEver</h1>
-          <p className="mt-1 text-gray-500">Pick a category, cast your one vote.</p>
+        <div className="flex items-center gap-3">
+          <img src="/bestever-panther.png" alt="" className="h-20 w-20" />
+          <div>
+            <img src="/bestever-wordmark.png" alt="BestEver" className="h-10 w-auto" />
+            <p className="mt-1 text-gray-500">Universal Polling to find the BestEver.</p>
+          </div>
         </div>
 
         {user ? (
