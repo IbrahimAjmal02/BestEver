@@ -13,6 +13,8 @@ const PORT = process.env.PORT ?? 4000
 const ALLOWED_ORIGINS = [
   'http://localhost:5173', // Vite dev server
   'https://best-ever.vercel.app', // deployed frontend (Vercel)
+  'https://bestever.live', // custom domain
+  'https://www.bestever.live', // custom domain (www)
 ]
 
 const app = express()
