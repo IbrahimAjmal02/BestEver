@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: server
+  template:
+    metadata:
+      labels:
+        app: server
+    spec:
+      containers:
+        - name: server
+          image: localhost:5001/besteveer-server:test
+          imagePullPolicy: IfNotPresent # pulled from a local registry container (see server/k8s/README or CLAUDE.md) — imagePullPolicy: Never against the raw local image store didn't work (ErrImageNeverPull, containerd namespace mismatch)
+          ports:
+            - containerPort: 4000
+          envFrom:
+            - secretRef:
+                name: server-env
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4000
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4000
+            initialDelaySeconds: 5
+            periodSeconds: 10
