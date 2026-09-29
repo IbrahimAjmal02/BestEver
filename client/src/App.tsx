@@ -36,7 +36,12 @@ function App() {
   async function handleRefreshVerification() {
     if (auth.currentUser) {
       await auth.currentUser.reload()
-      setUser(auth.currentUser)
+      // reload() mutates auth.currentUser in place rather than replacing
+      // it, so passing it straight to setUser is a same-reference no-op —
+      // React bails out of the re-render even though emailVerified changed.
+      // Copy onto a new object with the same prototype so getIdToken() and
+      // friends still work, but the reference itself changes.
+      setUser(Object.assign(Object.create(Object.getPrototypeOf(auth.currentUser)), auth.currentUser))
     }
   }
 
