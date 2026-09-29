@@ -58,18 +58,20 @@ function App() {
         </div>
 
         {user ? (
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="whitespace-nowrap text-sm text-gray-600">{user.email}</span>
-            <Link to="/profile" className="whitespace-nowrap text-sm font-medium text-gray-900 hover:underline">
-              Profile
-            </Link>
-            <button
-              type="button"
-              onClick={handleSignOut}
-              className="whitespace-nowrap rounded-md bg-gray-900 px-4 py-2 font-medium text-white hover:bg-gray-800"
-            >
-              Sign out
-            </button>
+          <div className="flex flex-col items-end gap-2">
+            <span className="whitespace-nowrap text-sm text-gray-500">{user.email}</span>
+            <div className="flex items-center gap-3">
+              <Link to="/profile" className="whitespace-nowrap text-sm font-medium text-gray-900 hover:underline">
+                Profile
+              </Link>
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="whitespace-nowrap rounded-md bg-gray-900 px-4 py-2 font-medium text-white hover:bg-gray-800"
+              >
+                Sign out
+              </button>
+            </div>
           </div>
         ) : (
           <div className="flex gap-2">

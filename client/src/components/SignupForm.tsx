@@ -7,10 +7,29 @@ interface SignupFormProps {
     onClose?: () => void
 }
 
+// createUserWithEmailAndPassword only tells us the email is already
+// registered — it can't tell us whether that existing account was ever
+// verified, since it fails before touching that account at all. So the
+// message covers both real possibilities honestly, same reasoning as
+// SignInForm's merged invalid-credential message.
+function messageForError(code: string | undefined): string {
+    switch (code) {
+        case 'auth/email-already-in-use':
+            return "This email's already registered. If that's you, sign in instead — or if you haven't verified it yet, check your inbox for the link."
+        case 'auth/weak-password':
+            return 'Password is too weak — use at least 6 characters.'
+        case 'auth/invalid-email':
+            return "That doesn't look like a valid email address."
+        default:
+            return 'Something went wrong signing up.'
+    }
+}
+
 export default function SignupForm({ onClose }: SignupFormProps) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [error, setError] = useState<string | null>(null)
 
     function changeEmail(e: React.ChangeEvent<HTMLInputElement>) {
         setEmail(e.target.value)
@@ -23,16 +42,28 @@ export default function SignupForm({ onClose }: SignupFormProps) {
     async function submitFunc(e: React.SubmitEvent<HTMLFormElement>) {
         e.preventDefault()
         setIsSubmitting(true)
+        setError(null)
 
         try {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password)
-            const idToken = await userCredential.user.getIdToken()
             console.log('Signed up:', userCredential.user.uid)
-            await syncUser(idToken)
+
+            try {
+                const idToken = await userCredential.user.getIdToken()
+                await syncUser(idToken)
+            } catch (syncErr) {
+                // Firebase account already exists by this point — a backend
+                // hiccup here isn't a failed signup, and syncUser just runs
+                // again next time they sign in anyway.
+                console.error('User sync failed (signup still succeeded):', syncErr)
+            }
+
             await sendEmailVerification(userCredential.user)
             onClose?.()
         } catch (err) {
             console.error('Signup failed:', err)
+            const code = err && typeof err === 'object' && 'code' in err ? String(err.code) : undefined
+            setError(messageForError(code))
         } finally {
             setIsSubmitting(false)
         }
@@ -51,6 +82,9 @@ export default function SignupForm({ onClose }: SignupFormProps) {
                 </button>
             )}
             <h2 className="text-lg font-semibold text-gray-900">Sign up</h2>
+
+            {error && <p className="text-sm text-red-600">{error}</p>}
+
             <input
                 type="email"
                 onChange={changeEmail}
