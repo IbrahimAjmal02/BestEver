@@ -13,6 +13,8 @@ import NotFound from './pages/NotFound'
 function App() {
   const [user, setUser] = useState<User | null>(null)
   const [authMode, setAuthMode] = useState<'signin' | 'signup' | null>(null)
+  const [resendStatus, setResendStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
+  const [refreshStatus, setRefreshStatus] = useState<'idle' | 'checking' | 'still-unverified'>('idle')
   const location = useLocation()
   const isHome = location.pathname === '/'
 
@@ -27,22 +29,35 @@ function App() {
     signOut(auth)
   }
 
-  function handleResendVerification() {
-    if (auth.currentUser) {
-      sendEmailVerification(auth.currentUser)
+  async function handleResendVerification() {
+    if (!auth.currentUser) return
+    setResendStatus('sending')
+    try {
+      await sendEmailVerification(auth.currentUser)
+      setResendStatus('sent')
+    } catch (err) {
+      console.error('Resend verification failed:', err)
+      setResendStatus('error')
     }
   }
 
   async function handleRefreshVerification() {
-    if (auth.currentUser) {
-      await auth.currentUser.reload()
-      // reload() mutates auth.currentUser in place rather than replacing
-      // it, so passing it straight to setUser is a same-reference no-op —
-      // React bails out of the re-render even though emailVerified changed.
-      // Copy onto a new object with the same prototype so getIdToken() and
-      // friends still work, but the reference itself changes.
-      setUser(Object.assign(Object.create(Object.getPrototypeOf(auth.currentUser)), auth.currentUser))
-    }
+    if (!auth.currentUser) return
+    setRefreshStatus('checking')
+    await auth.currentUser.reload()
+    // reload() only updates the local emailVerified flag — the actual ID
+    // token used for API calls has email_verified baked in at issuance and
+    // doesn't change on its own. Without forcing a refresh here, the banner
+    // would correctly disappear while voting still 403s on a stale token.
+    await auth.currentUser.getIdToken(true)
+    // reload() mutates auth.currentUser in place rather than replacing
+    // it, so passing it straight to setUser is a same-reference no-op —
+    // React bails out of the re-render even though emailVerified changed.
+    // Copy onto a new object with the same prototype so getIdToken() and
+    // friends still work, but the reference itself changes.
+    const refreshedUser = Object.assign(Object.create(Object.getPrototypeOf(auth.currentUser)), auth.currentUser)
+    setUser(refreshedUser)
+    setRefreshStatus(refreshedUser.emailVerified ? 'idle' : 'still-unverified')
   }
 
   return (
@@ -99,16 +114,33 @@ function App() {
       </div>
 
       {user && !user.emailVerified && (
-        <div className="mt-4 flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <span>Please verify your email address.</span>
-          <div className="flex gap-3">
-            <button type="button" onClick={handleResendVerification} className="font-medium underline">
-              Resend email
-            </button>
-            <button type="button" onClick={handleRefreshVerification} className="font-medium underline">
-              I've verified, refresh
-            </button>
+        <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <div className="flex items-center justify-between">
+            <span>Please verify your email address.</span>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={handleResendVerification}
+                disabled={resendStatus === 'sending'}
+                className="font-medium underline disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {resendStatus === 'sending' ? 'Sending...' : 'Resend email'}
+              </button>
+              <button
+                type="button"
+                onClick={handleRefreshVerification}
+                disabled={refreshStatus === 'checking'}
+                className="font-medium underline disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {refreshStatus === 'checking' ? 'Checking...' : "I've verified, refresh"}
+              </button>
+            </div>
           </div>
+          {resendStatus === 'sent' && <p className="mt-1 text-green-700">Verification email sent — check your inbox.</p>}
+          {resendStatus === 'error' && <p className="mt-1 text-red-700">Couldn't send the email — please wait a bit and try again.</p>}
+          {refreshStatus === 'still-unverified' && (
+            <p className="mt-1">Still not verified — click the link in your email first, then try again.</p>
+          )}
         </div>
       )}
 
