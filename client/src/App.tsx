@@ -12,31 +12,49 @@ import NotFound from './pages/NotFound'
 
 function App() {
   const [user, setUser] = useState<User | null>(null)
+  // 'checking': haven't confirmed current status yet against Firebase's
+  // servers (just restored from cache, or freshly signed in).
+  // 'unverified': confirmed not verified yet.
+  // 'verified': confirmed verified, with a token that actually reflects it.
+  const [verificationState, setVerificationState] = useState<'checking' | 'unverified' | 'verified'>('verified')
   const [authMode, setAuthMode] = useState<'signin' | 'signup' | null>(null)
   const [resendStatus, setResendStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
-  const [refreshStatus, setRefreshStatus] = useState<'idle' | 'checking' | 'still-unverified'>('idle')
+  const [refreshStatus, setRefreshStatus] = useState<'idle' | 'checking'>('idle')
   const location = useLocation()
   const isHome = location.pathname === '/'
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      // A page reload restores whatever was last cached — if that snapshot
-      // says unverified, double-check with Firebase's servers rather than
-      // trusting the stale cache. If they actually verified (e.g. clicked
-      // the email link in another tab, then came back and refreshed), force
-      // a fresh ID token too so voting doesn't 403 on the old stale claim.
-      if (currentUser && !currentUser.emailVerified) {
-        await currentUser.reload()
-        if (currentUser.emailVerified) {
-          await currentUser.getIdToken(true)
-        }
-        setUser(Object.assign(Object.create(Object.getPrototypeOf(currentUser)), currentUser))
-        return
-      }
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser)
+      // Don't trust currentUser.emailVerified here — a restored session can
+      // have that profile flag already showing true while the underlying
+      // cached ID token (the actual JWT the backend checks) is still the
+      // stale pre-verification one; these two don't necessarily update in
+      // lockstep on session restoration. The effect below checks the real
+      // token's own claim instead of this flag, once the SDK has settled.
+      setVerificationState(currentUser ? 'checking' : 'verified')
     })
     return () => unsubscribe()
   }, [])
+
+  useEffect(() => {
+    if (verificationState !== 'checking' || !user) return
+    ;(async () => {
+      const token = await user.getIdToken()
+      const claims = JSON.parse(atob(token.split('.')[1]))
+      if (!claims.email_verified) {
+        // Token itself says unverified — reload() to check current server
+        // state, and if it turns out they actually are verified now, force
+        // a real token refresh so the NEXT getIdToken() call (e.g. voting)
+        // gets one that actually carries the updated claim.
+        await user.reload()
+        if (user.emailVerified) {
+          await user.getIdToken(true)
+        }
+      }
+      setVerificationState(user.emailVerified ? 'verified' : 'unverified')
+    })()
+  }, [verificationState, user])
 
   function handleSignOut() {
     signOut(auth)
@@ -54,23 +72,15 @@ function App() {
     }
   }
 
-  async function handleRefreshVerification() {
+  async function handleCheckVerification() {
     if (!auth.currentUser) return
     setRefreshStatus('checking')
     await auth.currentUser.reload()
-    // reload() only updates the local emailVerified flag — the actual ID
-    // token used for API calls has email_verified baked in at issuance and
-    // doesn't change on its own. Without forcing a refresh here, the banner
-    // would correctly disappear while voting still 403s on a stale token.
-    await auth.currentUser.getIdToken(true)
-    // reload() mutates auth.currentUser in place rather than replacing
-    // it, so passing it straight to setUser is a same-reference no-op —
-    // React bails out of the re-render even though emailVerified changed.
-    // Copy onto a new object with the same prototype so getIdToken() and
-    // friends still work, but the reference itself changes.
-    const refreshedUser = Object.assign(Object.create(Object.getPrototypeOf(auth.currentUser)), auth.currentUser)
-    setUser(refreshedUser)
-    setRefreshStatus(refreshedUser.emailVerified ? 'idle' : 'still-unverified')
+    if (auth.currentUser.emailVerified) {
+      await auth.currentUser.getIdToken(true)
+    }
+    setVerificationState(auth.currentUser.emailVerified ? 'verified' : 'unverified')
+    setRefreshStatus('idle')
   }
 
   return (
@@ -126,7 +136,7 @@ function App() {
         )}
       </div>
 
-      {user && !user.emailVerified && (
+      {user && verificationState === 'unverified' && (
         <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <div className="flex items-center justify-between">
             <span>Please verify your email address.</span>
@@ -141,7 +151,7 @@ function App() {
               </button>
               <button
                 type="button"
-                onClick={handleRefreshVerification}
+                onClick={handleCheckVerification}
                 disabled={refreshStatus === 'checking'}
                 className="font-medium underline disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -151,9 +161,6 @@ function App() {
           </div>
           {resendStatus === 'sent' && <p className="mt-1 text-green-700">Verification email sent — check your inbox.</p>}
           {resendStatus === 'error' && <p className="mt-1 text-red-700">Couldn't send the email — please wait a bit and try again.</p>}
-          {refreshStatus === 'still-unverified' && (
-            <p className="mt-1">Still not verified — click the link in your email first, then try again.</p>
-          )}
         </div>
       )}
 
