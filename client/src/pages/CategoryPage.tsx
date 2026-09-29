@@ -198,9 +198,23 @@ export default function CategoryPage({ user }: CategoryPageProps) {
     <div className="mt-8">
       {myVote ? (
         <div className="flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-4 py-3">
-          <span className="text-gray-900">
-            You voted for <span className="font-medium">{myVote.item.name}</span>
-          </span>
+          <div className="flex items-center gap-3">
+            {myVote.item.imageUrl && (
+              <div className="relative">
+                {leaderboard[0]?.id === myVote.item.id && (
+                  <img
+                    src="/crown.png"
+                    alt="1st place"
+                    className="absolute -top-5 left-1/2 z-10 h-5 w-auto -translate-x-1/2"
+                  />
+                )}
+                <img src={myVote.item.imageUrl} alt={myVote.item.name} className="h-10 w-10 object-cover" />
+              </div>
+            )}
+            <span className="text-gray-900">
+              You voted for <span className="font-medium">{myVote.item.name}</span>
+            </span>
+          </div>
           <button
             type="button"
             onClick={handleRemoveVote}

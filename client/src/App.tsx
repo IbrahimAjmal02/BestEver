@@ -19,7 +19,20 @@ function App() {
   const isHome = location.pathname === '/'
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      // A page reload restores whatever was last cached — if that snapshot
+      // says unverified, double-check with Firebase's servers rather than
+      // trusting the stale cache. If they actually verified (e.g. clicked
+      // the email link in another tab, then came back and refreshed), force
+      // a fresh ID token too so voting doesn't 403 on the old stale claim.
+      if (currentUser && !currentUser.emailVerified) {
+        await currentUser.reload()
+        if (currentUser.emailVerified) {
+          await currentUser.getIdToken(true)
+        }
+        setUser(Object.assign(Object.create(Object.getPrototypeOf(currentUser)), currentUser))
+        return
+      }
       setUser(currentUser)
     })
     return () => unsubscribe()
