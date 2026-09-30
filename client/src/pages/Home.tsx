@@ -54,18 +54,17 @@ export default function Home() {
 
       <div className="mt-6 flex flex-col gap-6">
         {filteredCategories.map((category) => (
-          <div key={category.id} className="rounded-lg border border-gray-200 p-4">
-            <Link
-              to={`/categories/${category.slug}`}
-              className="text-lg font-semibold text-gray-900 hover:underline"
-            >
-              {category.name}
-            </Link>
+          <Link
+            key={category.id}
+            to={`/categories/${category.slug}`}
+            className="block rounded-lg border border-gray-200 p-4 transition-colors hover:border-gray-300 hover:bg-gray-50"
+          >
+            <span className="text-lg font-semibold text-gray-900">{category.name}</span>
 
             <div className="mt-3">
               <CategoryTopFive slug={category.slug} />
             </div>
-          </div>
+          </Link>
         ))}
       </div>
     </div>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import type { User } from 'firebase/auth'
+import { sendEmailVerification, type User } from 'firebase/auth'
 import {
   getLeaderboard,
   getMyVote,
@@ -13,12 +13,15 @@ import {
 import { castVote, changeVote, removeVote } from '../api/votes'
 import type { ExternalSearchResult } from '../api/search'
 import SearchBox from '../components/SearchBox'
+import Modal from '../components/Modal'
 
 interface CategoryPageProps {
   user: User | null
+  isEmailVerified: boolean
+  onRequireSignIn: () => void
 }
 
-export default function CategoryPage({ user }: CategoryPageProps) {
+export default function CategoryPage({ user, isEmailVerified, onRequireSignIn }: CategoryPageProps) {
   const { slug } = useParams<{ slug: string }>()
   const [leaderboard, setLeaderboard] = useState<Item[]>([])
   const [myVote, setMyVote] = useState<VoteWithItem | null>(null)
@@ -29,6 +32,37 @@ export default function CategoryPage({ user }: CategoryPageProps) {
   const [dbResults, setDbResults] = useState<Item[]>([])
   const [dbHasSearched, setDbHasSearched] = useState(false)
   const [totalVotes, setTotalVotes] = useState(0)
+  // Shown as a popup right at the point someone tries to vote, rather than
+  // relying only on the passive banner at the top of the page — much more
+  // likely to actually be seen in the moment it matters.
+  const [gatePopup, setGatePopup] = useState<'signin' | 'verify' | null>(null)
+  const [resendStatus, setResendStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
+
+  // Shared by every vote entry point — returns false (and opens the
+  // relevant popup) if this attempt shouldn't proceed.
+  function canVote() {
+    if (!user) {
+      setGatePopup('signin')
+      return false
+    }
+    if (!isEmailVerified) {
+      setGatePopup('verify')
+      return false
+    }
+    return true
+  }
+
+  async function handleResendFromPopup() {
+    if (!user) return
+    setResendStatus('sending')
+    try {
+      await sendEmailVerification(user)
+      setResendStatus('sent')
+    } catch (err) {
+      console.error('Resend verification failed:', err)
+      setResendStatus('error')
+    }
+  }
 
   const refresh = useCallback(async () => {
     if (!slug) return
@@ -69,11 +103,7 @@ export default function CategoryPage({ user }: CategoryPageProps) {
   // create the Item first, since neither of those already has one.
   async function voteFor(data: { externalId?: string; name: string; imageUrl?: string }) {
     if (!slug) return
-
-    if (!user) {
-      setActionError('Sign in to vote.')
-      return
-    }
+    if (!canVote() || !user) return
 
     setIsSubmitting(true)
     setActionError(null)
@@ -94,10 +124,7 @@ export default function CategoryPage({ user }: CategoryPageProps) {
   // Used by the leaderboard's own vote button — the Item already exists,
   // so this skips straight to casting/changing the vote.
   async function handleVoteForItem(itemId: string) {
-    if (!user) {
-      setActionError('Sign in to vote.')
-      return
-    }
+    if (!canVote() || !user) return
 
     setIsSubmitting(true)
     setActionError(null)
@@ -339,6 +366,66 @@ export default function CategoryPage({ user }: CategoryPageProps) {
           </li>
         ))}
       </ol>
+
+      <Modal
+        isOpen={gatePopup !== null}
+        onClose={() => {
+          setGatePopup(null)
+          setResendStatus('idle')
+        }}
+      >
+        <div className="relative w-80 rounded-lg border border-gray-200 bg-white p-6 shadow-lg">
+          <button
+            type="button"
+            onClick={() => {
+              setGatePopup(null)
+              setResendStatus('idle')
+            }}
+            aria-label="Close"
+            className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+          >
+            ✕
+          </button>
+
+          {gatePopup === 'signin' && (
+            <>
+              <h2 className="text-lg font-semibold text-gray-900">Sign in to vote</h2>
+              <p className="mt-2 text-sm text-gray-600">You need an account to cast a vote in this category.</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setGatePopup(null)
+                  onRequireSignIn()
+                }}
+                className="mt-4 w-full rounded-md bg-gray-900 px-4 py-2 font-medium text-white hover:bg-gray-800"
+              >
+                Sign in
+              </button>
+            </>
+          )}
+
+          {gatePopup === 'verify' && (
+            <>
+              <h2 className="text-lg font-semibold text-gray-900">Verify your email to vote</h2>
+              <p className="mt-2 text-sm text-gray-600">
+                Check your inbox for the verification link, then come back and try again.
+              </p>
+              <button
+                type="button"
+                onClick={handleResendFromPopup}
+                disabled={resendStatus === 'sending'}
+                className="mt-4 w-full rounded-md bg-gray-900 px-4 py-2 font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-400"
+              >
+                {resendStatus === 'sending' ? 'Sending...' : 'Resend verification email'}
+              </button>
+              {resendStatus === 'sent' && <p className="mt-2 text-sm text-green-700">Verification email sent — check your inbox.</p>}
+              {resendStatus === 'error' && (
+                <p className="mt-2 text-sm text-red-700">Couldn't send the email — please wait a bit and try again.</p>
+              )}
+            </>
+          )}
+        </div>
+      </Modal>
     </div>
   )
 }

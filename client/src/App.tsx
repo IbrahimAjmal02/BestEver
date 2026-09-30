@@ -92,13 +92,13 @@ function App() {
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
+        <Link to="/" className="flex items-center gap-3">
           <img src="/bestever-panther.png" alt="" className="h-20 w-20" />
           <div>
             <img src="/bestever-wordmark.png" alt="BestEver" className="h-10 w-auto" />
             <p className="mt-1 text-gray-500">Universal Polling to find the BestEver.</p>
           </div>
-        </div>
+        </Link>
 
         {user ? (
           <div className="flex flex-col items-end gap-2">
@@ -171,7 +171,16 @@ function App() {
 
       <Routes>
         <Route path="/" element={<Home />} />
-        <Route path="/categories/:slug" element={<CategoryPage user={user} />} />
+        <Route
+          path="/categories/:slug"
+          element={
+            <CategoryPage
+              user={user}
+              isEmailVerified={verificationState === 'verified'}
+              onRequireSignIn={() => setAuthMode('signin')}
+            />
+          }
+        />
         <Route path="/profile" element={<ProfilePage user={user} />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
