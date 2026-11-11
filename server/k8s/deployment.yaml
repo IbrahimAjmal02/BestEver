@@ -15,7 +15,7 @@ spec:
       containers:
         - name: server
           image: localhost:5001/besteveer-server:test
-          imagePullPolicy: IfNotPresent # pulled from a local registry container (see server/k8s/README or CLAUDE.md) — imagePullPolicy: Never against the raw local image store didn't work (ErrImageNeverPull, containerd namespace mismatch)
+          imagePullPolicy: IfNotPresent # pulled from a local registry container — imagePullPolicy: Never against the raw local image store didn't work (ErrImageNeverPull, containerd namespace mismatch)
           ports:
             - containerPort: 4000
           envFrom:

@@ -6,7 +6,7 @@ import type { ExternalSearchResult } from './types.js'
 // block requests without one. ~1 request/second is their documented limit;
 // not an issue for a single search action from one user, worth remembering
 // if this ever needs to handle bursts of requests.
-const USER_AGENT = 'BestEver/1.0 (ibrahimajmal02@gmail.com)'
+const USER_AGENT = 'BestEver/1.0 (https://github.com/IbrahimAjmal02/BestEver)'
 
 // MusicBrainz's core API doesn't return artist photos or popularity data at
 // all — it's a metadata database (no play/fan counts by design), not an

@@ -8,7 +8,7 @@ import meRouter from './routes/me.js'
 
 const PORT = process.env.PORT ?? 4000
 
-// Explicit allowlist rather than cors() wide open — CLAUDE.md flags this as
+// Explicit allowlist rather than cors() wide open — this is
 // an intentional choice, don't loosen it without discussion.
 const ALLOWED_ORIGINS = [
   'http://localhost:5173', // Vite dev server

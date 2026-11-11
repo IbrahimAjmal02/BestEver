@@ -9,3 +9,6 @@ CLAUDE.md
 
 # Safety net: never commit env files anywhere in the repo
 .env
+
+# TypeScript incremental build cache
+*.tsbuildinfo
